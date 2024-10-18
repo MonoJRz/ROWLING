@@ -1,0 +1,113 @@
+import tkinter as tk
+from xarm import version
+from xarm.wrapper import XArmAPI
+import threading
+from queue import Queue
+import time
+
+class RobotMain(object):
+    def __init__(self, robot, **kwargs):
+        self._arm = robot
+        self._tcp_speed = 150
+        self._tcp_acc = 150
+        self._angle_speed = 150
+        self._angle_acc = 150
+        self._vars = {}
+        self._funcs = {}
+        self._robot_init()
+        self._position_queue = Queue()
+        self._movement_thread = threading.Thread(target=self._movement_thread_func)
+        self._movement_thread.daemon = True
+        self._movement_thread.start()
+
+    def _robot_init(self):
+        self._arm.clean_warn()
+        self._arm.clean_error()
+        self._arm.motion_enable(True)
+        self._arm.set_mode(0)
+        self._arm.set_state(0)
+
+    def move_to_position(self, target_position):
+        try:
+            code = self._arm.set_position(*target_position, speed=self._tcp_speed, mvacc=self._tcp_acc, radius=-1.0, wait=True)
+        except Exception as e:
+            print("Exception while moving to position:", str(e))
+
+    def _movement_thread_func(self):
+        while True:
+            if not self._position_queue.empty():
+                target_position = self._position_queue.get()
+                start_time = time.time()
+                self.move_to_position(target_position)
+                end_time = time.time()
+                elapsed_time = end_time - start_time
+                print(f"Task completed in {elapsed_time:.2f} seconds")
+
+    def add_position_to_queue(self, position):
+        self._position_queue.put(position)
+
+class GUI():
+    def __init__(self, robot_main):
+        self.robot_main = robot_main
+        self.mw = tk.Tk()
+        self.mw.geometry('400x400')
+
+        # Labels
+        self.label_gripper = tk.Label(self.mw, text="Gripper")
+        self.label_link2 = tk.Label(self.mw, text="Link 2")
+        self.label_link3 = tk.Label(self.mw, text="Link 3")
+        self.label_link4 = tk.Label(self.mw, text="Link 4")
+        self.label_link5 = tk.Label(self.mw, text="Link 5")
+        self.label_link6 = tk.Label(self.mw, text="Link 6")
+
+        # Sliders
+        self.scale_gripper = tk.Scale(self.mw, from_=0, to=1000, orient=tk.HORIZONTAL, command=self.send_val)
+        self.scale_link2 = tk.Scale(self.mw, from_=0, to=1000, orient=tk.HORIZONTAL, command=self.send_val)
+        self.scale_link3 = tk.Scale(self.mw, from_=0, to=1000, orient=tk.HORIZONTAL, command=self.send_val)
+        self.scale_link4 = tk.Scale(self.mw, from_=0, to=1000, orient=tk.HORIZONTAL, command=self.send_val)
+        self.scale_link5 = tk.Scale(self.mw, from_=0, to=1000, orient=tk.HORIZONTAL, command=self.send_val)
+        self.scale_link6 = tk.Scale(self.mw, from_=0, to=1000, orient=tk.HORIZONTAL, command=self.send_val)
+
+        self.scale_gripper.set(0)
+        self.scale_link2.set(0)
+        self.scale_link3.set(0)
+        self.scale_link4.set(0)
+        self.scale_link5.set(0)
+        self.scale_link6.set(0)
+
+        self.label_gripper.place(x=10, y=10)
+        self.label_link2.place(x=10, y=60)
+        self.label_link3.place(x=10, y=110)
+        self.label_link4.place(x=10, y=160)
+        self.label_link5.place(x=10, y=210)
+        self.label_link6.place(x=10, y=260)
+
+        self.scale_gripper.place(x=100, y=0)
+        self.scale_link2.place(x=100, y=50)
+        self.scale_link3.place(x=100, y=100)
+        self.scale_link4.place(x=100, y=150)
+        self.scale_link5.place(x=100, y=200)
+        self.scale_link6.place(x=100, y=250)
+
+        tk.mainloop()
+
+    def send_val(self, evt):
+        gripper_val = self.scale_gripper.get()
+        link2_val = self.scale_link2.get()
+        link3_val = self.scale_link3.get()
+        link4_val = self.scale_link4.get()
+        link5_val = self.scale_link5.get()
+        link6_val = self.scale_link6.get()
+
+        # Call the RobotMain method to add the position to the queue
+        self.robot_main.add_position_to_queue((link2_val, link3_val, link4_val, link5_val, link6_val, gripper_val))
+
+if __name__ == '__main__':
+    print('xArm-Python-SDK Version:', version.__version__)
+
+    # Connect to the robot
+    arm = XArmAPI('192.168.1.205', baud_checkset=False)
+    robot_main = RobotMain(arm)
+
+    # Create GUI instance and pass RobotMain instance
+    gui = GUI(robot_main)
